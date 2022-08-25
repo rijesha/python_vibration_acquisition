@@ -30,15 +30,15 @@ sudo make uninstall && sudo make clean && sudo make -j4 && sudo make install
 export PYTHONPATH=$PYTHONPATH:/usr/local/lib/python3.8/pyrealsense2
 
 
-python3 -m venv .venv
+python3.8 -m venv .venv
 
 source .venv/bin/activate 
-
-pip install cython wheel numpy transformations dronekit apscheduler==3.8.0 pyserial py-imu-mpu6050
 pip install --upgrade pip
-pip install scikit-build
+pip install cython 
+pip install wheel numpy 
+pip install transformations pyserial scikit-build 
+pip install dronekit apscheduler==3.8.0  py-imu-mpu6050 
 pip install opencv-python dt-apriltags
-
 
 on each startup 
 sudo echo 400000 > /sys/bus/i2c/devices/i2c-1/bus_clk_rate
