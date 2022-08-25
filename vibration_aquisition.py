@@ -43,14 +43,13 @@ def progress(string):
     print(string, file=sys.stdout)
     sys.stdout.flush()
 
-
 #######################################
 # Parameters
 #######################################
 
 # Default configurations for connection to the FCU
 connection_string_default = '/dev/ttyTHS1'
-connection_baudrate_default =  230400#921600
+connection_baudrate_default =  230400 #921600
 connection_timeout_sec_default = 5
 
 # Transformation to convert different camera orientations to NED convention. Replace camera_orientation_default for your configuration.
@@ -300,6 +299,10 @@ else:
     debug_enable = 1
     np.set_printoptions(precision=4, suppress=True) # Format output on terminal 
     progress("INFO: Debug messages enabled.")
+
+if not log_file_name:
+    log_file_name = "test_log"
+    print("INFO: Logging to test_log")
 
 if not visualization:
     visualization = 0
@@ -567,6 +570,8 @@ def user_input_monitor():
                 send_msg_to_gcs('Set EKF home with default GPS location')
                 set_default_global_origin()
                 set_default_home_position()
+            elif c == "q":
+                main_loop_should_quit = True
             else:
                 progress("Got keyboard input %s" % c)
         except IOError: pass
@@ -667,7 +672,7 @@ if compass_enabled == 1:
 
 send_msg_to_gcs('Sending vision messages to FCU')
 accel_logger =  mpu6050_logger.mpu6050_logger(log_file_name + "_acceleration")
-
+video_writer = cv2.VideoWriter(log_file_name + ".avi", cv2.VideoWriter_fourcc(*'MJPG'),30, (412,300), 0)
 
 try:
     # Configure the OpenCV stereo algorithm. See
@@ -882,9 +887,8 @@ try:
         else:
             # print("INFO: No tag detected")
             is_landing_tag_detected = False
-
         # If enabled, display tag-detected image in a pop-up window, required a monitor to be connected
-        if visualization == 1:
+        if True:
             # Create color image from source
             tags_img = center_undistorted[tag_image_source]
                 
@@ -915,12 +919,14 @@ try:
                             color = (255, 0, 0))
 
             # Display the image in a window
-            cv2.imshow(WINDOW_TITLE, tags_img)
+            video_writer.write(tags_img)
+            if visualization == 1:
+                cv2.imshow(WINDOW_TITLE, tags_img)
 
-            # Read keyboard input on the image window
-            key = cv2.waitKey(1)
-            if key == ord('q') or cv2.getWindowProperty(WINDOW_TITLE, cv2.WND_PROP_VISIBLE) < 1:
-                break
+                # Read keyboard input on the image window
+                key = cv2.waitKey(1)
+                if key == ord('q') or cv2.getWindowProperty(WINDOW_TITLE, cv2.WND_PROP_VISIBLE) < 1:
+                    break
 
 except Exception as e:
     progress(e)
@@ -940,5 +946,6 @@ finally:
     conn.close()
     udp_conn.close()
     accel_logger.stop()
+    video_writer.release()
     progress("INFO: Realsense pipeline and vehicle object closed.")
     sys.exit(exit_code)
