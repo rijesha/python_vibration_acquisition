@@ -37,6 +37,7 @@ from pymavlink import mavutil
 import cv2
 import dt_apriltags
 import mpu6050_logger
+import vision_control
 
 # Replacement of the standard print() function to flush the output
 def progress(string):
@@ -434,6 +435,24 @@ def send_vision_speed_estimate_message():
                 reset_counter               # Estimate reset counter. Increment every time pose estimate jumps.
             )
 
+
+def goto_position_target_local_ned(forward, right, down, yaw):
+    """ 
+    Send SET_POSITION_TARGET_LOCAL_NED command to request the vehicle fly to a specified 
+    location in the North, East, Down frame.
+    It is important to remember that in this frame, positive altitudes are entered as negative 
+    "Down" values. So if down is "10", this will be 10 metres below the home altitude.
+    """
+    conn.mav.set_position_target_local_ned_send(
+        0,       # time_boot_ms (not used)
+        0, 0,    # target system, target component
+        mavutil.mavlink.MAV_FRAME_BODY_OFFSET_NED, # frame
+        0b100111111000, # type_mask (only positions enabled)
+        forward, right, down, # x, y, z positions (or North, East, Down in the MAV_FRAME_BODY_NED frame
+        0, 0, 0, # x, y, z velocity in m/s  (not used)
+        0, 0, 0, # x, y, z acceleration (not supported yet, ignored in GCS_Mavlink)
+        yaw, 0)    # yaw, yaw_rate (not supported yet, ignored in GCS_Mavlink) 
+
 # Update the changes of confidence level on GCS and terminal
 def update_tracking_confidence_to_gcs():
     if data is not None and update_tracking_confidence_to_gcs.prev_confidence_level != data.tracker_confidence:
@@ -580,6 +599,7 @@ def user_input_monitor():
 #######################################
 # Main code starts here
 #######################################
+vision_control.VisionControl vc(goto_position_target_local_ned, log_file_name + "_vision_controller")
 
 try:
     progress("INFO: pyrealsense2 version: %s" % str(rs.__version__))
@@ -600,7 +620,7 @@ conn = mavutil.mavlink_connection(
 udp_conn = mavutil.mavlink_connection('udpout:192.168.1.64:15667', source_system=1, source_component=1)
 #udp_conn = mavutil.mavlink_connection('udpout:10.42.0.1:15667', source_system=1)
 
-mavlink_callbacks = [att_msg_callback]
+mavlink_callbacks = [att_msg_callback, vc.update_mavlink_msg]
 
 rover_thread = threading.Thread(target=mavlink_loop, args=(conn, mavlink_callbacks, udp_conn))
 rover_thread.start()
@@ -879,6 +899,7 @@ try:
                 # Check for the tag that we want to land on
                 if tag.tag_id == tag_landing_id:
                     is_landing_tag_detected = True
+                    vc.update_target_position(tag.pose_t[0],tag.pose_t[1],tag.pose_t[2])
                     H_camera_tag = tf.euler_matrix(0, 0, 0, 'sxyz')
                     H_camera_tag[0][3] = tag.pose_t[0]
                     H_camera_tag[1][3] = tag.pose_t[1]
