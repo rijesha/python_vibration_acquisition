@@ -351,8 +351,9 @@ def mavlink_loop(conn, callbacks, fwd_conn):
             for c in callbacks:
                 c(m)
             forwarding_func(fwd_conn, m)
-        except:
-            print(m.get_type())
+        except Exception as e:
+            print(e)
+            print("got an error with msg type: " + str(m.get_type()))
 
 
 # https://mavlink.io/en/messages/common.html#VISION_POSITION_ESTIMATE
@@ -443,15 +444,16 @@ def goto_position_target_local_ned(forward, right, down, yaw):
     It is important to remember that in this frame, positive altitudes are entered as negative 
     "Down" values. So if down is "10", this will be 10 metres below the home altitude.
     """
-    conn.mav.set_position_target_local_ned_send(
-        0,       # time_boot_ms (not used)
-        0, 0,    # target system, target component
-        mavutil.mavlink.MAV_FRAME_BODY_OFFSET_NED, # frame
-        0b100111111000, # type_mask (only positions enabled)
-        forward, right, down, # x, y, z positions (or North, East, Down in the MAV_FRAME_BODY_NED frame
-        0, 0, 0, # x, y, z velocity in m/s  (not used)
-        0, 0, 0, # x, y, z acceleration (not supported yet, ignored in GCS_Mavlink)
-        yaw, 0)    # yaw, yaw_rate (not supported yet, ignored in GCS_Mavlink) 
+    with lock:
+        conn.mav.set_position_target_local_ned_send(
+            0,       # time_boot_ms (not used)
+            0, 0,    # target system, target component
+            mavutil.mavlink.MAV_FRAME_BODY_OFFSET_NED, # frame
+            0b100111111000, # type_mask (only positions enabled)
+            forward, right, down, # x, y, z positions (or North, East, Down in the MAV_FRAME_BODY_NED frame
+            0, 0, 0, # x, y, z velocity in m/s  (not used)
+            0, 0, 0, # x, y, z acceleration (not supported yet, ignored in GCS_Mavlink)
+            yaw, 0)    # yaw, yaw_rate (not supported yet, ignored in GCS_Mavlink) 
 
 # Update the changes of confidence level on GCS and terminal
 def update_tracking_confidence_to_gcs():
@@ -515,7 +517,7 @@ def update_timesync(ts=0, tc=0):
 
 # Listen to attitude data to acquire heading when compass data is enabled
 def att_msg_callback(value):
-    if value.get_type() == "ATTITDUE":        
+    if value.get_type() == "ATTITUDE":        
         global heading_north_yaw
         if heading_north_yaw is None:
             heading_north_yaw = value.yaw
@@ -599,7 +601,7 @@ def user_input_monitor():
 #######################################
 # Main code starts here
 #######################################
-vision_control.VisionControl vc(goto_position_target_local_ned, log_file_name + "_vision_controller")
+vc = vision_control.VisionControl(goto_position_target_local_ned, log_file_name + "_vision_controller")
 
 try:
     progress("INFO: pyrealsense2 version: %s" % str(rs.__version__))
@@ -807,7 +809,7 @@ try:
         # Process data
         if pose:
             with lock:
-                print(str(time.time()-loop_time) + "s since last loop")
+                #print(str(time.time()-loop_time) + "s since last loop")
                 loop_time = time.time()
                 
                 # Store the timestamp for MAVLink messages
@@ -904,7 +906,7 @@ try:
                     H_camera_tag[0][3] = tag.pose_t[0]
                     H_camera_tag[1][3] = tag.pose_t[1]
                     H_camera_tag[2][3] = tag.pose_t[2]
-                    print("INFO: Detected landing tag", str(tag.tag_id), " relative to camera at x:", H_camera_tag[0][3], ", y:", H_camera_tag[1][3], ", z:", H_camera_tag[2][3])
+                    #print("INFO: Detected landing tag", str(tag.tag_id), " relative to camera at x:", H_camera_tag[0][3], ", y:", H_camera_tag[1][3], ", z:", H_camera_tag[2][3])
         else:
             # print("INFO: No tag detected")
             is_landing_tag_detected = False
@@ -968,5 +970,6 @@ finally:
     udp_conn.close()
     accel_logger.stop()
     video_writer.release()
+    vc.stop()
     progress("INFO: Realsense pipeline and vehicle object closed.")
     sys.exit(exit_code)
