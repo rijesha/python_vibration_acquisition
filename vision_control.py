@@ -5,8 +5,10 @@ import numpy as np
 import time
 from enum import Enum 
 
-end_position_z = .4
-staging_position_z = 1.5
+end_position_z = .42
+end_position_down = .1
+staging_position_z = 1
+final_yaw = 3.14
 
 class ControlState(Enum):
     WAITING_FOR_INIT = 1
@@ -20,6 +22,9 @@ class VisionControl:
     last_mode = 0
     time_start_acquring = time.time()
     data = []
+    last_control_state = ControlState.WAITING_FOR_INIT
+    control_state = ControlState.WAITING_FOR_INIT
+    lock = threading.Lock()
 
     def __init__(self, got_to_position_func, filename):
         self.shutdown = False
@@ -33,14 +38,15 @@ class VisionControl:
         
         self.last_tar_update_time = 0
         self.last_yaw_update_time = 0
-        self.pos = {'right':0, 'down':0, 'forward':0}
+        self.pos = {'right':0, 'down':0, 'forward':0, 'mode':0, 'drone_mode':0, 'des_r':0, 'des_d':0, 'des_f':0, 'yaw':0, 'des_y': final_yaw}
         self.yaw = 0
         
-        self.control_state = ControlState.WAITING_FOR_INIT
-        
         self.runner_th = threading.Thread(target=self.timeout)
+    
+    def start(self):
+        print("INFO: Starting timeout thread")
         self.runner_th.start()
-        
+    
     def stop(self):
         self.shutdown = True
         self.runner_th.join()
@@ -49,12 +55,12 @@ class VisionControl:
         if msg.get_type() == "ATTITUDE":
             self.last_yaw_update_time = time.time()
             self.yaw = msg.yaw
+            self.pos['yaw'] = self.yaw
         elif msg.get_type() == "HEARTBEAT":
             self.update_mode(msg.custom_mode)
 
     def update_target_position(self, x, y, z):
         self.last_tar_update_time = time.time()
-        #self.pos = {'right':x, 'down':y, 'forward':z}
         self.pos['right'] = x
         self.pos['down'] = y
         self.pos['forward'] = z
@@ -63,59 +69,58 @@ class VisionControl:
     def update_mode(self, mode):
         if (time.time() - self.last_tar_update_time) < .5 and self.last_mode != 4 and mode == 4:
             self.control_state = ControlState.CENTERING_ON_TARGET
-            print("Changing Mode to Centring On Target")
         elif mode != 4:
-            if mode == 4:
-                print("Resetting Control To Wait")
+            if self.last_mode == 4:
+                print("Drone no longer in guided")
             self.control_state = ControlState.WAITING_FOR_INIT
-            self.send_desired_position(0,0,0, self.yaw)
-        
-        print(mode)
+            self.send_desired_position(0,0,0, final_yaw)
+        self.pos['drone_mode'] = mode
         self.last_mode = mode
 
     def send_desired_position(self, forward, right, down, yaw):
-        print(forward, right, down, yaw)
-        #self.data.append[{'right': self.pos['right'], 'down': self.pos['down'], 'forward': self.pos['forward'], 'yaw': self.yaw, 'des_forward': forward, 'des_right': right, 'des_down': down, 'des_yaw': yaw, 'des_mode' : self.last_mode}]
-        #print("sending data")
-        #self.got_to_position_func(forward, right, down, yaw)
+        self.pos['des_r'] = right
+        self.pos['des_d'] = down
+        self.pos['des_f'] = forward
+        self.got_to_position_func(forward, right, down, yaw)
+        with self.lock:
+            self.data.append(self.pos)
 
     def waiting_for_init(self):
-        self.send_desired_position(0,0,0, self.yaw)
+        self.send_desired_position(0,0,0, final_yaw)
         return False
 
     def centring_on_target(self):
-        self.send_desired_position(self.pos['forward'] - staging_position_z,self.pos['right'],self.pos['down'],self.yaw)
-        if abs(self.pos['right']) < 0.05 and abs(self.pos['down']) < 0.05:
+        self.send_desired_position(self.pos['forward'] - staging_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
+        if abs(self.pos['right']) < 0.05 and abs(self.pos['down'] + end_position_down) < 0.05:
             return True
         return False
 
     def making_contact(self):
-        self.send_desired_position(self.pos['forward'] - end_position_z,self.pos['right'],self.pos['down'],self.yaw)
-        if self.pos['forward'] < (end_position_z - 0.05):
+        self.send_desired_position(self.pos['forward'] - end_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
+        if abs(self.pos['forward'] - 0.05) < end_position_z :
             self.time_start_acquring = time.time()
             return True
         return False
 
     def acquiring_sample(self):
-        self.send_desired_position(self.pos['forward'] - end_position_z,self.pos['right'],self.pos['down'],self.yaw)
+        self.send_desired_position(self.pos['forward'] - end_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
         if (time.time() - self.time_start_acquring) > 4:
             return True 
         return False
 
     def leaving_target(self):
-        self.send_desired_position(self.pos['forward'] - staging_position_z,self.pos['right'],self.pos['down'],self.yaw)
+        self.send_desired_position(self.pos['forward'] - staging_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
         if self.pos['forward'] > (staging_position_z - 0.05):
             return True
         return False
     
     def timeout(self):
         while not self.shutdown:
-            
-            #if len(self.data) == self.chunksize*3:
-            #    y=0
-            #    for y in range ( 0, len(self.data) , 3):
-            #        self.csvfile.writelines(" {0:.5f} , {d1[right]} , {d1[down]} , {d1[forward]}, {d1[yaw]} , {d1[des_right]} , {d1[des_down]} , {d1[des_forward]}, {d1[des_yaw]}, {d1[mode]},  \n".format(time.time(), d1=self.data[y+1]) )
-            #    self.data.clear()
+            if len(self.data) == self.chunksize*3:
+                for d in self.data:
+                    self.csvfile.writelines(" {0:.5f} , {d1[right]} , {d1[down]} , {d1[forward]}, {d1[yaw]} , {d1[des_r]} , {d1[des_d]} , {d1[des_f]}, {d1[des_y]}, {d1[mode]}, {d1[drone_mode]} \n".format(time.time(), d1=d) )
+                with self.lock:
+                    self.data.clear()
             
             if (time.time() - self.last_tar_update_time) > .5:
                 if self.control_state != ControlState.WAITING_FOR_INIT:
@@ -126,32 +131,36 @@ class VisionControl:
 
 
     def runner(self):
+        if self.last_control_state != self.control_state:
+            print("Chaging States from: " + str(self.last_control_state) + " to: " + str(self.control_state) )
+            self.last_control_state = self.control_state
+            self.pos['mode'] = self.control_state.value
         if self.control_state is ControlState.WAITING_FOR_INIT:
-            print("[LOOP] waiting for init")
+            #print("[LOOP] waiting for init")
             if self.waiting_for_init():
                 self.control_state = ControlState.CENTERING_ON_TARGET
             else:
                 pass
         elif self.control_state == ControlState.CENTERING_ON_TARGET:
-            print("[LOOP] centring_state")
+            #print("[LOOP] centring_state")
             if self.centring_on_target():
                 self.control_state = ControlState.MAKING_CONTACT
             else:
                 pass
         elif self.control_state == ControlState.MAKING_CONTACT:
-            print("[LOOP] making contact")
+            #print("[LOOP] making contact")
             if self.making_contact():
                 self.control_state = ControlState.ACQUIRING_SAMPLE
             else:
                 pass
         elif self.control_state == ControlState.ACQUIRING_SAMPLE:
-            print("[LOOP] sampling")
+            #print("[LOOP] sampling")
             if self.acquiring_sample():
                 self.control_state = ControlState.LEAVING_TARGET
             else:
                 pass
         elif self.control_state == ControlState.LEAVING_TARGET:
-            print("[LOOP] leaving")
+            #print("[LOOP] leaving")
             if self.leaving_target():
                 self.control_state = ControlState.WAITING_FOR_INIT
             else:

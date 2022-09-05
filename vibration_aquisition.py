@@ -798,6 +798,7 @@ try:
     # For AprilTag detection
     camera_params = [stereo_focal_px, stereo_focal_px, stereo_cx, stereo_cy]
     loop_time = time.time()
+    vc.start()
 
     while not main_loop_should_quit:
         # Wait for the next set of frames from the camera
