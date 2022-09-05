@@ -50,7 +50,7 @@ def progress(string):
 
 # Default configurations for connection to the FCU
 connection_string_default = '/dev/ttyTHS1'
-connection_baudrate_default =  230400 #921600
+connection_baudrate_default =  460800 #921600
 connection_timeout_sec_default = 5
 
 # Transformation to convert different camera orientations to NED convention. Replace camera_orientation_default for your configuration.
@@ -332,12 +332,25 @@ def forwarding_func(conn, msg):
         
     conn.mav.send(msg)
 
-def send_hb(conn):
-    conn.mav.heartbeat_send(mavutil.mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
-                        mavutil.mavlink.MAV_AUTOPILOT_GENERIC,
-                        0,
-                        0,
-                        0)
+def reboot():
+    with lock:
+        conn.mav.command_long_send(
+            0, 0,  # target_system, target_component
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,  # command
+            0,  # confirmation
+            1,  # param 1, autopilot (reboot)
+            0,  # param 2, onboard computer (do nothing)
+            0,  # param 3, camera (do nothing)
+            0,  # param 4, mount (do nothing)
+            0, 0, 0)  # param 5 ~ 7 not used
+
+def send_hb():
+    with lock:
+        conn.mav.heartbeat_send(mavutil.mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
+                            mavutil.mavlink.MAV_AUTOPILOT_GENERIC,
+                            0,
+                            0,
+                            0)
 
 def mavlink_loop(conn, callbacks, fwd_conn):
     '''a main routine for a thread; reads data from a mavlink connection,
@@ -591,6 +604,8 @@ def user_input_monitor():
                 send_msg_to_gcs('Set EKF home with default GPS location')
                 set_default_global_origin()
                 set_default_home_position()
+            elif c=="r":
+                reboot()
             elif c == "q":
                 main_loop_should_quit = True
             else:
@@ -619,8 +634,8 @@ conn = mavutil.mavlink_connection(
     force_connected=True,
 )
 
-udp_conn = mavutil.mavlink_connection('udpout:192.168.1.64:15667', source_system=1, source_component=1)
-#udp_conn = mavutil.mavlink_connection('udpout:10.42.0.1:15667', source_system=1)
+#udp_conn = mavutil.mavlink_connection('udpout:192.168.1.73:15667', source_system=1, source_component=1)
+udp_conn = mavutil.mavlink_connection('udpout:10.42.0.1:15667', source_system=1, source_component=1)
 
 mavlink_callbacks = [att_msg_callback, vc.update_mavlink_msg]
 
@@ -668,6 +683,8 @@ if enable_user_keyboard_input:
     user_keyboard_input_thread.daemon = True
     user_keyboard_input_thread.start()
     progress("INFO: Press Enter to set EKF home at default location")
+
+sched.add_job(send_hb, 'interval', seconds = 1/10.0)
 
 sched.start()
 

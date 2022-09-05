@@ -8,17 +8,8 @@ import time
 
 class mpu6050_logger:
     def __init__(self, filename):
-        self.i2c = busio.I2C(SCL,SDA)
-        self.IMU = MPU6050(self.i2c)
+        self.outfile = filename + '.csv'
         self.shutdown = False
-
-        print ("Identification 0x{:X} ".format(self.IMU.whoami))
-
-        outfile = filename + '.csv'
-        self.chunksize = 10
-        self.data = []
-        self.csvfile = open(outfile, 'w+')
-        self.csvfile.writelines("{:5s} , {:5s} , {:5s} , {:5s} , \n".format("Time", "Xa","Ya","Za"))
         self.runner_th = threading.Thread(target=self.runner)
         self.runner_th.start()
         
@@ -27,6 +18,16 @@ class mpu6050_logger:
         self.runner_th.join()
         
     def runner(self):
+        self.i2c = busio.I2C(SCL,SDA)
+        self.IMU = MPU6050(self.i2c)
+        
+        print ("Identification 0x{:X} ".format(self.IMU.whoami))
+
+        
+        self.chunksize = 10
+        self.data = []
+        self.csvfile = open(self.outfile, 'w+')
+        self.csvfile.writelines("{:5s} , {:5s} , {:5s} , {:5s} , \n".format("Time", "Xa","Ya","Za"))
         while not self.shutdown: 
             self.data.append(self.IMU.get_accel_data_fast(g=True))
             

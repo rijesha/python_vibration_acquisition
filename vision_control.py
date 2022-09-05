@@ -4,11 +4,13 @@ import threading
 import numpy as np
 import time
 from enum import Enum 
+import queue
+
 
 end_position_z = .42
 end_position_down = .1
 staging_position_z = 1
-final_yaw = 3.14
+final_yaw = 1.577
 
 class ControlState(Enum):
     WAITING_FOR_INIT = 1
@@ -21,7 +23,7 @@ class ControlState(Enum):
 class VisionControl:
     last_mode = 0
     time_start_acquring = time.time()
-    data = []
+    data = queue.Queue()
     last_control_state = ControlState.WAITING_FOR_INIT
     control_state = ControlState.WAITING_FOR_INIT
     lock = threading.Lock()
@@ -32,24 +34,26 @@ class VisionControl:
 
         outfile = filename + '.csv'
         self.chunksize = 10
-        self.data = []
         self.csvfile = open(outfile, 'w+')
-        self.csvfile.writelines("{:5s} , {:5s} , {:5s} , {:5s} , \n".format("Time", "Xa","Ya","Za"))
+        self.csvfile.writelines("time,right,down,forward,yaw,des_r,des_d,des_f,des_y, mode, drone_mode \n".format("Time", "Xa","Ya","Za"))
         
         self.last_tar_update_time = 0
         self.last_yaw_update_time = 0
-        self.pos = {'right':0, 'down':0, 'forward':0, 'mode':0, 'drone_mode':0, 'des_r':0, 'des_d':0, 'des_f':0, 'yaw':0, 'des_y': final_yaw}
+        self.pos = {'time':0, 'right':0, 'down':0, 'forward':0, 'mode':0, 'drone_mode':0, 'des_r':0, 'des_d':0, 'des_f':0, 'yaw':0, 'des_y': final_yaw}
         self.yaw = 0
         
+        self.writer_th = threading.Thread(target=self.writer)
         self.runner_th = threading.Thread(target=self.timeout)
     
     def start(self):
-        print("INFO: Starting timeout thread")
+        print("INFO: Starting Vision Control")
         self.runner_th.start()
+        self.writer_th.start()
     
     def stop(self):
         self.shutdown = True
         self.runner_th.join()
+        self.writer_th.join()
 
     def update_mavlink_msg(self, msg):
         if msg.get_type() == "ATTITUDE":
@@ -81,9 +85,9 @@ class VisionControl:
         self.pos['des_r'] = right
         self.pos['des_d'] = down
         self.pos['des_f'] = forward
+        self.pos['time'] = time.time()
         self.got_to_position_func(forward, right, down, yaw)
-        with self.lock:
-            self.data.append(self.pos)
+        self.data.put_nowait(self.pos)
 
     def waiting_for_init(self):
         self.send_desired_position(0,0,0, final_yaw)
@@ -114,14 +118,13 @@ class VisionControl:
             return True
         return False
     
+    def writer(self):
+        while not self.shutdown:
+            d = self.data.get()
+            self.csvfile.write(" {d1[time]} , {d1[right]} , {d1[down]} , {d1[forward]}, {d1[yaw]} , {d1[des_r]} , {d1[des_d]} , {d1[des_f]}, {d1[des_y]}, {d1[mode]}, {d1[drone_mode]} \n".format(d1=d) )
+            
     def timeout(self):
         while not self.shutdown:
-            if len(self.data) == self.chunksize*3:
-                for d in self.data:
-                    self.csvfile.writelines(" {0:.5f} , {d1[right]} , {d1[down]} , {d1[forward]}, {d1[yaw]} , {d1[des_r]} , {d1[des_d]} , {d1[des_f]}, {d1[des_y]}, {d1[mode]}, {d1[drone_mode]} \n".format(time.time(), d1=d) )
-                with self.lock:
-                    self.data.clear()
-            
             if (time.time() - self.last_tar_update_time) > .5:
                 if self.control_state != ControlState.WAITING_FOR_INIT:
                     print("[LOST TARGET] Resetting state")
