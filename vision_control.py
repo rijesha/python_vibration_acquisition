@@ -7,10 +7,11 @@ from enum import Enum
 import queue
 
 
-end_position_z = .42
+end_position_z = .82
 end_position_down = .1
-staging_position_z = 1
-final_yaw = 1.577
+staging_position_z = 1.5
+finished_z = 3
+final_yaw = 0
 
 class ControlState(Enum):
     WAITING_FOR_INIT = 1
@@ -113,8 +114,8 @@ class VisionControl:
         return False
 
     def leaving_target(self):
-        self.send_desired_position(self.pos['forward'] - staging_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
-        if self.pos['forward'] > (staging_position_z - 0.05):
+        self.send_desired_position(self.pos['forward'] - finished_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
+        if self.pos['forward'] > (finished_z - 0.05):
             return True
         return False
     
