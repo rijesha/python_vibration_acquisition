@@ -96,7 +96,7 @@ body_offset_z = 0  # In meters (m)
 scale_factor = 1.0
 
 # Enable using yaw from compass to align north (zero degree is facing north)
-compass_enabled = 0
+compass_enabled = 1
 
 # pose data confidence: 0x0 - Failed / 0x1 - Low / 0x2 - Medium / 0x3 - High 
 pose_data_confidence_level = ('FAILED', 'Low', 'Medium', 'High')
@@ -919,12 +919,13 @@ try:
                 # Check for the tag that we want to land on
                 if tag.tag_id == tag_landing_id:
                     is_landing_tag_detected = True
-                    vc.update_target_position(tag.pose_t[0],tag.pose_t[1],tag.pose_t[2])
+                    vc.update_target_position(tag.pose_t[2], tag.pose_t[0],tag.pose_t[1])
                     H_camera_tag = tf.euler_matrix(0, 0, 0, 'sxyz')
-                    H_camera_tag[0][3] = tag.pose_t[0]
-                    H_camera_tag[1][3] = tag.pose_t[1]
-                    H_camera_tag[2][3] = tag.pose_t[2]
-                    #print("INFO: Detected landing tag", str(tag.tag_id), " relative to camera at x:", H_camera_tag[0][3], ", y:", H_camera_tag[1][3], ", z:", H_camera_tag[2][3])
+                    H_camera_tag[0][3] = tag.pose_t[2]
+                    H_camera_tag[1][3] = tag.pose_t[0]
+                    H_camera_tag[2][3] = tag.pose_t[1]
+                    rotated_pose = np.linalg.inv(H_aeroRef_aeroBody).dot(H_camera_tag)
+                    print("INFO: Detected landing tag", str(tag.tag_id), " relative to camera at x:", rotated_pose[0][3], ", y:", rotated_pose[1][3], ", z:", rotated_pose[2][3])
         else:
             # print("INFO: No tag detected")
             is_landing_tag_detected = False

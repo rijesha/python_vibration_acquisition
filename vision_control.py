@@ -64,11 +64,11 @@ class VisionControl:
         elif msg.get_type() == "HEARTBEAT":
             self.update_mode(msg.custom_mode)
 
-    def update_target_position(self, x, y, z):
+    def update_target_position(self, north, east, down):
         self.last_tar_update_time = time.time()
-        self.pos['right'] = x
-        self.pos['down'] = y
-        self.pos['forward'] = z
+        self.pos['right'] = east
+        self.pos['down'] = down
+        self.pos['forward'] = north
         self.runner()
 
     def update_mode(self, mode):
