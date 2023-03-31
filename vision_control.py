@@ -10,7 +10,7 @@ import queue
 end_position_z = .5
 end_position_down = .1
 staging_position_z = 1.5
-finished_z = 3
+finished_z = 2
 final_yaw = 0
 
 class ControlState(Enum):
@@ -110,7 +110,7 @@ class VisionControl:
 
     def acquiring_sample(self):
         self.send_desired_position(self.pos['forward'] - end_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
-        if (time.time() - self.time_start_acquring) > 4:
+        if (time.time() - self.time_start_acquring) > 15:
             return True 
         return False
 
