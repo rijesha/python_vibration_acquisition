@@ -96,7 +96,7 @@ body_offset_z = 0  # In meters (m)
 scale_factor = 1.0
 
 # Enable using yaw from compass to align north (zero degree is facing north)
-compass_enabled = 1
+compass_enabled = 0
 
 # pose data confidence: 0x0 - Failed / 0x1 - Low / 0x2 - Medium / 0x3 - High 
 pose_data_confidence_level = ('FAILED', 'Low', 'Medium', 'High')
@@ -919,13 +919,26 @@ try:
                 # Check for the tag that we want to land on
                 if tag.tag_id == tag_landing_id:
                     is_landing_tag_detected = True
-                    vc.update_target_position(tag.pose_t[2], tag.pose_t[0],tag.pose_t[1])
                     H_camera_tag = tf.euler_matrix(0, 0, 0, 'sxyz')
                     H_camera_tag[0][3] = tag.pose_t[2]
                     H_camera_tag[1][3] = tag.pose_t[0]
                     H_camera_tag[2][3] = tag.pose_t[1]
-                    rotated_pose = np.linalg.inv(H_aeroRef_aeroBody).dot(H_camera_tag)
-                    print("INFO: Detected landing tag", str(tag.tag_id), " relative to camera at x:", rotated_pose[0][3], ", y:", rotated_pose[1][3], ", z:", rotated_pose[2][3])
+                    temp_arr = H_aeroRef_aeroBody
+                    temp_arr[0][3]= 0
+                    temp_arr[1][3]= 0
+                    temp_arr[2][3]= 0
+                    rotated_pose = temp_arr.dot(H_camera_tag)
+                    vc.update_target_position(rotated_pose[0][3], rotated_pose[1][3],rotated_pose[2][3])
+                    #vc.update_target_position(tag.pose_t[2], tag.pose_t[0],tag.pose_t[1])
+                    
+                    #rotated_pose = H_camera_tag.dot(temp_arr)
+                    #rotated_pose = np.linalg.inv(temp_arr).dot(H_camera_tag) # does nothing
+                    #np.linalg.inv(
+                    #print(H_camera_tag)
+                    #print(H_aeroRef_aeroBody)
+                    #print(rotated_pose)
+                    
+                    #print("INFO: Detected landing tag", str(tag.tag_id), " relative to camera at x:", tag.pose_t[2], " ", rotated_pose[0][3], ", y:", tag.pose_t[0], " " ,rotated_pose[1][3], ", z:", tag.pose_t[1], " ", rotated_pose[2][3])
         else:
             # print("INFO: No tag detected")
             is_landing_tag_detected = False

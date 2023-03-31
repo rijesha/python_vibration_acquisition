@@ -7,7 +7,7 @@ from enum import Enum
 import queue
 
 
-end_position_z = .82
+end_position_z = .5
 end_position_down = .1
 staging_position_z = 1.5
 finished_z = 3
@@ -73,6 +73,7 @@ class VisionControl:
 
     def update_mode(self, mode):
         if (time.time() - self.last_tar_update_time) < .5 and self.last_mode != 4 and mode == 4:
+            print("Drone changing state to centring on target")
             self.control_state = ControlState.CENTERING_ON_TARGET
         elif mode != 4:
             if self.last_mode == 4:
