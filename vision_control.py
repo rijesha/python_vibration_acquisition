@@ -7,10 +7,10 @@ from enum import Enum
 import queue
 
 
-end_position_z = .5
+end_position_z = .43
 end_position_down = .1
 staging_position_z = 1.5
-finished_z = 2
+finished_z = 1.5
 final_yaw = 0
 
 class ControlState(Enum):
@@ -36,11 +36,11 @@ class VisionControl:
         outfile = filename + '.csv'
         self.chunksize = 10
         self.csvfile = open(outfile, 'w+')
-        self.csvfile.writelines("time,right,down,forward,yaw,des_r,des_d,des_f,des_y, mode, drone_mode \n".format("Time", "Xa","Ya","Za"))
+        self.csvfile.writelines("time,right,down,forward,yaw,des_r,des_d,des_f,r_sp, d_sp, f_sp, des_y, mode, drone_mode \n".format("Time", "Xa","Ya","Za"))
         
         self.last_tar_update_time = 0
         self.last_yaw_update_time = 0
-        self.pos = {'time':0, 'right':0, 'down':0, 'forward':0, 'mode':0, 'drone_mode':0, 'des_r':0, 'des_d':0, 'des_f':0, 'yaw':0, 'des_y': final_yaw}
+        self.pos = {'time':0, 'right':0, 'down':0, 'forward':0, 'mode':0, 'drone_mode':0, 'des_r':0, 'des_d':0, 'des_f':0, 'r_sp':0, 'd_sp':0, 'f_sp':0,  'yaw':0, 'des_y': final_yaw}
         self.yaw = 0
         
         self.writer_th = threading.Thread(target=self.writer)
@@ -79,43 +79,47 @@ class VisionControl:
             if self.last_mode == 4:
                 print("Drone no longer in guided")
             self.control_state = ControlState.WAITING_FOR_INIT
-            self.send_desired_position(0,0,0, final_yaw)
+            self.send_desired_position(0,0,0, final_yaw,0,0,0)
         self.pos['drone_mode'] = mode
         self.last_mode = mode
 
-    def send_desired_position(self, forward, right, down, yaw):
+    def send_desired_position(self, forward, right, down, yaw, f_sp, r_sp, d_sp):
         self.pos['des_r'] = right
         self.pos['des_d'] = down
         self.pos['des_f'] = forward
+        self.pos['f_sp'] = f_sp
+        self.pos['r_sp'] = r_sp
+        self.pos['d_sp'] = d_sp
         self.pos['time'] = time.time()
         self.got_to_position_func(forward, right, down, yaw)
         self.data.put_nowait(self.pos)
 
     def waiting_for_init(self):
-        self.send_desired_position(0,0,0, final_yaw)
+        self.send_desired_position(0,0,0, final_yaw,0,0,0)
         return False
 
     def centring_on_target(self):
-        self.send_desired_position(self.pos['forward'] - staging_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
+
+        self.send_desired_position(self.pos['forward'] - staging_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw, staging_position_z, 0, end_position_down)
         if abs(self.pos['right']) < 0.05 and abs(self.pos['down'] + end_position_down) < 0.05:
             return True
         return False
 
     def making_contact(self):
-        self.send_desired_position(self.pos['forward'] - end_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
+        self.send_desired_position(self.pos['forward'] - end_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw, end_position_z, 0, end_position_down)
         if abs(self.pos['forward'] - 0.05) < end_position_z :
             self.time_start_acquring = time.time()
             return True
         return False
 
     def acquiring_sample(self):
-        self.send_desired_position(self.pos['forward'] - end_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
-        if (time.time() - self.time_start_acquring) > 15:
+        self.send_desired_position(self.pos['forward'] - end_position_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw, end_position_z, 0, end_position_down)
+        if (time.time() - self.time_start_acquring) > 10:
             return True 
         return False
 
     def leaving_target(self):
-        self.send_desired_position(self.pos['forward'] - finished_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw)
+        self.send_desired_position(self.pos['forward'] - finished_z,self.pos['right'],self.pos['down']+ end_position_down,final_yaw, finished_z, 0, end_position_down)
         if self.pos['forward'] > (finished_z - 0.05):
             return True
         return False
@@ -123,7 +127,7 @@ class VisionControl:
     def writer(self):
         while not self.shutdown:
             d = self.data.get()
-            self.csvfile.write(" {d1[time]} , {d1[right]} , {d1[down]} , {d1[forward]}, {d1[yaw]} , {d1[des_r]} , {d1[des_d]} , {d1[des_f]}, {d1[des_y]}, {d1[mode]}, {d1[drone_mode]} \n".format(d1=d) )
+            self.csvfile.write(" {d1[time]} , {d1[right]} , {d1[down]} , {d1[forward]}, {d1[yaw]} , {d1[des_r]} , {d1[des_d]} , {d1[des_f]}, {d1[r_sp]} , {d1[d_sp]} , {d1[f_sp]}, {d1[des_y]}, {d1[mode]}, {d1[drone_mode]} \n".format(d1=d) )
             
     def timeout(self):
         while not self.shutdown:
@@ -167,42 +171,7 @@ class VisionControl:
         elif self.control_state == ControlState.LEAVING_TARGET:
             #print("[LOOP] leaving")
             if self.leaving_target():
-                self.control_state = ControlState.WAITING_FOR_INIT
+                self.control_state = ControlState.LEAVING_TARGET
             else:
                 pass
 
-    #def init_target_kalman_filter(self):
-    #    # Process Noise
-    #    q = np.eye(6)
-    #    q[0][0] = 0.01
-    #    q[1][1] = 0.01
-    #    q[2][2] = 0.01
-    #    q[3][3] = 0.25
-    #    q[4][4] = 0.25
-    #    q[5][5] = 0.25
-#
-    #    # create measurement noise covariance matrices
-    #    r_imu = np.zeros([2, 2])
-    #    r_imu[0][0] = 0.01
-    #    r_imu[1][1] = 0.03
-#
-    #    r_compass = np.zeros([1, 1])
-    #    r_compass[0][0] = 0.02
-#
-    #    r_encoder = np.zeros([1, 1])
-    #    r_encoder[0][0] = 0.001
-#
-    #    # pass all the parameters into the UKF!
-    #    # number of state variables, process noise, initial state, initial coariance, three tuning paramters, and the iterate function
-    #    state_estimator = UKF(6, q, np.zeros(6), 0.0001*np.eye(6), 0.04, 0.0, 2.0, self.iterate_x)
-#
-    #def iterate_x(x_in, timestep, inputs):
-    #    '''this function is based on the x_dot and can be nonlinear as needed'''
-    #    ret = np.zeros(len(x_in))
-    #    ret[0] = x_in[0] + timestep * x_in[3]
-    #    ret[1] = x_in[1] + timestep * x_in[4]
-    #    ret[2] = x_in[2] + timestep * x_in[5]
-    #    ret[3] = x_in[3]
-    #    ret[4] = x_in[4]
-    #    ret[5] = x_in[5]
-    #    return ret

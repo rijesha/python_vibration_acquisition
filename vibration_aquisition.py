@@ -11,6 +11,8 @@
 #   pip3 install apscheduler
 #   pip3 install pyserial
 
+# File based of off work by Thien Nguyen https://github.com/thien94/vision_to_mavros
+
 # Set the path for IDLE
 import sys
 sys.path.append("/usr/local/lib/")
@@ -635,7 +637,8 @@ conn = mavutil.mavlink_connection(
 )
 
 #udp_conn = mavutil.mavlink_connection('udpout:192.168.1.73:15667', source_system=1, source_component=1)
-udp_conn = mavutil.mavlink_connection('udpout:10.42.0.1:15667', source_system=1, source_component=1)
+#udp_conn = mavutil.mavlink_connection('udpout:10.42.0.1:15667', source_system=1, source_component=1)
+udp_conn = mavutil.mavlink_connection('udpout:192.168.166.94:15667', source_system=1, source_component=1)
 
 mavlink_callbacks = [att_msg_callback, vc.update_mavlink_msg]
 

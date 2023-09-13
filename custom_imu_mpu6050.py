@@ -42,6 +42,7 @@ __repo__ = "git@github.com:romybompart/py_imu_mpu6050.git"
 
 from adafruit_register.i2c_struct import UnaryStruct, ROUnaryStruct
 from adafruit_bus_device.i2c_device import I2CDevice
+import time
 
 class MPU6050:
 	"""
@@ -344,7 +345,7 @@ class MPU6050:
 			y = y * self.GRAVITIY_MS2
 			z = z * self.GRAVITIY_MS2
 
-		return {'x': x, 'y': y, 'z': z}
+		return [time.time(), x, y, z]
 
 	def get_accel_data(self, g = False):
 		"""Gets and returns the X, Y and Z values from the accelerometer.
